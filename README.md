@@ -14,7 +14,7 @@ and - the part that matters - the combinations those weaknesses add up to.
 
 ---
 
-## Why this bug class exists
+## OAuth is not one protocol
 
 OAuth 2.0 is not one protocol. It is a set of specifications with an enormous
 number of locally reasonable configurations, a small minority of which are
