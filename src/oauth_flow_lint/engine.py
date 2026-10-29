@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import (
+    escalation,
     rules_capture,
     rules_flow,
     rules_provider,
@@ -35,6 +36,14 @@ class Report:
     config: Configuration
     findings: list[Finding] = field(default_factory=list)
 
+    @property
+    def base_findings(self) -> list[Finding]:
+        return [f for f in self.findings if f.rule.category != "escalation"]
+
+    @property
+    def escalations(self) -> list[Finding]:
+        return [f for f in self.findings if f.rule.category == "escalation"]
+
     def at_or_above(self, threshold: Severity) -> list[Finding]:
         return [f for f in self.findings if f.severity >= threshold]
 
@@ -52,5 +61,6 @@ def run(config: Configuration) -> Report:
     findings: list[Finding] = []
     for module in CHECK_MODULES:
         findings.extend(module.check(config))
+    findings.extend(escalation.apply(findings))
     findings.sort(key=sort_key)
     return Report(config=config, findings=findings)
