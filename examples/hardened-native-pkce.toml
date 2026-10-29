@@ -1,0 +1,73 @@
+# A native (mobile/desktop) client. It registers an http loopback callback and a
+# reverse-DNS private-use scheme, both of which are the mechanisms RFC 8252
+# provides. The linter must not treat the loopback URI as if it were an http
+# callback on a routable host - that distinction is the difference between a
+# correct native app and an account takeover, and it reports RU006 (info) to
+# show that the distinction was made rather than missed.
+#
+#   oauth-flow-lint lint examples/hardened-native-pkce.toml             -> exit 0
+#   oauth-flow-lint lint examples/hardened-native-pkce.toml --all       -> shows RU006
+
+schema = 1
+
+[client]
+client_id = "field-app-native"
+client_type = "public"
+application_type = "native"
+secret_present = false
+redirect_uris = [
+    "com.example.fieldapp:/oauth2redirect",
+    "http://127.0.0.1/oauth2redirect",
+]
+response_types = ["code"]
+response_mode = "query"
+grant_types = ["authorization_code", "refresh_token"]
+scopes = ["openid", "profile", "offline_access"]
+stated_purpose_scopes = ["openid", "profile", "offline_access"]
+scope_change_reconsent = true
+
+[client.pkce]
+used = true
+method = "S256"
+
+[client.state]
+sent = true
+bound_to_session = true
+single_use = true
+entropy_bits = 256
+source = "csprng"
+
+[client.nonce]
+sent = true
+bound_to_session = true
+
+[client.id_token_validation]
+signature_verified = true
+alg_pinned = true
+accepted_algs = ["RS256"]
+accepts_none_alg = false
+aud_checked = true
+iss_checked = true
+exp_checked = true
+azp_checked = true
+jwks_source = "pinned"
+jwks_host_pinned = true
+expected_audiences = ["field-app-native"]
+
+[client.tokens]
+access_token_transport = "header"
+refresh_token_issued = true
+refresh_token_rotation = true
+access_token_lifetime_seconds = 900
+refresh_token_lifetime_seconds = 7776000
+browser_storage = "none"
+
+[provider]
+name = "corp-idp"
+issuer = "https://idp.example"
+redirect_uri_matching = "exact"
+enforces_pkce = true
+pkce_methods = ["S256"]
+returns_iss_parameter = true
+dynamic_client_registration = "closed"
+supports_request_uri = false

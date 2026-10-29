@@ -1,0 +1,89 @@
+# The escalation case, and the reason this tool exists.
+#
+# Read down the list and you find two or three medium-looking notes: the
+# provider matches redirect URIs by prefix, the registered callback is a bare
+# origin, the client uses the implicit flow. Each is a known item on a review
+# checklist and each gets ticked.
+#
+# Put them together and the attacker sends the victim one link. The provider
+# accepts a redirect_uri pointing at any path on dash.example because the
+# registration is a prefix, and it delivers the access token to that path in
+# the fragment because the response type asks for one. There is no code to
+# exchange and no secret to obtain. That is ESC001, and no single line of this
+# file contains it.
+#
+#   oauth-flow-lint lint examples/vulnerable-spa-implicit.toml   -> exit 1
+
+schema = 1
+
+[client]
+client_id = "analytics-dashboard-spa"
+client_type = "public"
+application_type = "spa"
+secret_present = true
+redirect_uris = [
+    "https://dash.example/",
+    "https://dash.example/auth/callback",
+    "https://oauth-flow-lint-placeholder.pages.dev/auth/callback",
+    "https://dash.example/login?next=/home",
+    "https://reports.dash.example/auth/callback",
+]
+wildcard_dns_hosts = ["dash.example"]
+response_types = ["id_token token"]
+response_mode = "fragment"
+grant_types = ["implicit", "refresh_token"]
+scopes = ["openid", "profile", "email", "reports:read", "reports:write", "offline_access"]
+stated_purpose_scopes = ["openid", "profile", "reports:read"]
+scope_change_reconsent = false
+
+[client.pkce]
+used = false
+
+[client.state]
+sent = true
+bound_to_session = false
+single_use = false
+entropy_bits = 32
+source = "timestamp"
+
+[client.nonce]
+sent = false
+bound_to_session = false
+
+[client.id_token_validation]
+signature_verified = true
+alg_pinned = false
+accepts_none_alg = false
+aud_checked = false
+iss_checked = true
+exp_checked = true
+azp_checked = false
+jwks_source = "discovery"
+jwks_host_pinned = false
+expected_audiences = []
+
+[client.tokens]
+access_token_transport = "query"
+refresh_token_issued = true
+refresh_token_rotation = false
+access_token_lifetime_seconds = 86400
+refresh_token_lifetime_seconds = 0
+browser_storage = "localstorage"
+
+[provider]
+name = "legacy-idp"
+issuer = "https://sso.example"
+redirect_uri_matching = "prefix"
+enforces_pkce = false
+pkce_methods = ["S256", "plain"]
+returns_iss_parameter = false
+dynamic_client_registration = "open"
+supports_request_uri = true
+grants_offline_access_without_request = false
+discovery_document = "./vulnerable-spa-implicit.discovery.json"
+
+[capture]
+label = "dashboard sign-in, captured in a browser"
+authorization_request = "https://sso.example/authorize?response_type=id_token%20token&client_id=analytics-dashboard-spa&redirect_uri=https%3A%2F%2Fdash.example%2Fauth%2Fcallback%2F&scope=openid+profile+email&state=1762000000"
+authorization_response = "https://dash.example/auth/callback/#access_token=REDACTED-TEST-VALUE&token_type=Bearer&expires_in=86400&id_token=REDACTED-TEST-VALUE&state=1762000000"
+resource_request = "https://api.example/v1/reports?access_token=REDACTED-TEST-VALUE&range=30d"

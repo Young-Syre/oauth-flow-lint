@@ -1,0 +1,93 @@
+# A client that is competently built in almost every respect: code flow, PKCE
+# with S256, full ID token validation, tokens held server-side. It federates to
+# three identity providers, which is ordinary for a product with enterprise
+# customers.
+#
+# Two of the three do not return the iss authorisation response parameter, and
+# the client's state value is not bound to the session that started the flow.
+# That is the mix-up condition (ESC004): a response produced at one issuer is
+# processed against another issuer's endpoints, and whoever operates or
+# compromises the weakest of the three decides who the client thinks you are.
+#
+# The individual notes are a high and a high. The combination is what gets
+# written up, and the fix for it is not the fix for either note alone.
+#
+#   oauth-flow-lint lint examples/multi-idp-missing-iss.toml   -> exit 1
+
+schema = 1
+
+[client]
+client_id = "workspace-federated-login"
+client_type = "confidential"
+application_type = "web"
+secret_present = true
+redirect_uris = ["https://workspace.example/auth/callback"]
+response_types = ["code"]
+response_mode = "query"
+grant_types = ["authorization_code", "refresh_token"]
+scopes = ["openid", "profile", "email"]
+stated_purpose_scopes = ["openid", "profile", "email"]
+scope_change_reconsent = true
+
+[client.pkce]
+used = true
+method = "S256"
+
+[client.state]
+sent = true
+bound_to_session = false
+single_use = true
+entropy_bits = 256
+source = "csprng"
+
+[client.nonce]
+sent = true
+bound_to_session = true
+
+[client.id_token_validation]
+signature_verified = true
+alg_pinned = true
+accepted_algs = ["RS256"]
+accepts_none_alg = false
+aud_checked = true
+iss_checked = true
+exp_checked = true
+azp_checked = true
+jwks_source = "pinned"
+jwks_host_pinned = true
+expected_audiences = ["workspace-federated-login"]
+
+[client.tokens]
+access_token_transport = "header"
+refresh_token_issued = true
+refresh_token_rotation = true
+access_token_lifetime_seconds = 600
+refresh_token_lifetime_seconds = 2592000
+browser_storage = "server"
+
+[[providers]]
+name = "primary-idp"
+issuer = "https://idp.example"
+redirect_uri_matching = "exact"
+enforces_pkce = true
+pkce_methods = ["S256"]
+returns_iss_parameter = true
+dynamic_client_registration = "closed"
+
+[[providers]]
+name = "customer-a-idp"
+issuer = "https://sso.customer-a.example"
+redirect_uri_matching = "exact"
+enforces_pkce = true
+pkce_methods = ["S256"]
+returns_iss_parameter = false
+dynamic_client_registration = "closed"
+
+[[providers]]
+name = "customer-b-idp"
+issuer = "https://login.customer-b.test"
+redirect_uri_matching = "exact"
+enforces_pkce = false
+pkce_methods = ["S256", "plain"]
+returns_iss_parameter = false
+dynamic_client_registration = "protected"

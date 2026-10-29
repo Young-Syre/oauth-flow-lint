@@ -1,0 +1,129 @@
+# oauth-flow-lint configuration.
+#
+# This file describes one OAuth 2.0 / OpenID Connect client and the provider(s)
+# it talks to. Nothing here is fetched: the linter reads this file, reasons
+# about the whole configuration at once, and reports both the individual
+# weaknesses and the combinations they add up to.
+#
+# Fill it in from the client's registration and from the code that handles the
+# callback. A field you cannot answer is itself a result - write down the
+# conservative value and the linter will tell you what rests on it.
+#
+# Run:  oauth-flow-lint lint <this file>
+#       oauth-flow-lint plan <this file>     # probes that confirm the provider's real behaviour
+
+schema = 1
+
+[client]
+client_id = "example-client"
+
+# "confidential" if the client can keep a secret (a server-side app);
+# "public" otherwise. A single-page or native app is public regardless of how
+# it is registered, and the linter treats it that way.
+client_type = "confidential"
+
+# "web" | "spa" | "native" | "service". This decides, among other things,
+# whether a loopback http callback is correct (native) or a leftover (web/spa).
+application_type = "web"
+
+# Whether a client secret exists. The value is never needed, and should not be
+# put in this file; `secret_present` is the whole signal.
+secret_present = true
+
+# Every registered callback, exactly as the provider holds it. Spelling
+# matters: the specification's comparison is a string comparison.
+redirect_uris = ["https://app.example/auth/callback"]
+
+# Callbacks you have confirmed forward the browser onward from a request
+# parameter. Confirmed, not suspected - the linter raises suspicion itself.
+confirmed_open_redirect_uris = []
+
+# Domains where any subdomain resolves to infrastructure you do not exclusively
+# control: wildcard DNS, a dangling delegation, a self-service subdomain
+# feature. A callback under one of these is not protected by its origin.
+wildcard_dns_hosts = []
+
+response_types = ["code"]
+response_mode = "query"            # "query" | "fragment" | "form_post"
+grant_types = ["authorization_code", "refresh_token"]
+
+scopes = ["openid", "profile", "email"]
+
+# What this client exists to do, as scopes. Anything requested beyond this is
+# authority held for no reason.
+stated_purpose_scopes = ["openid", "profile", "email"]
+
+# Whether widening the requested scope forces a new consent interaction.
+scope_change_reconsent = true
+
+[client.pkce]
+used = true
+method = "S256"                    # "S256" | "plain"
+
+[client.state]
+sent = true
+bound_to_session = true            # stored per session and compared on callback
+single_use = true
+entropy_bits = 256
+source = "csprng"                  # "csprng" | "timestamp" | "counter" | "static" | "unknown"
+
+[client.nonce]
+sent = true
+bound_to_session = true            # compared against the nonce claim in the ID token
+
+[client.id_token_validation]
+signature_verified = true
+alg_pinned = true                  # the algorithm comes from your config, not the token header
+accepted_algs = ["RS256"]
+accepts_none_alg = false
+aud_checked = true
+iss_checked = true
+exp_checked = true
+azp_checked = true
+jwks_source = "pinned"             # "pinned" | "discovery" | "token_header" | "unknown"
+jwks_host_pinned = true
+expected_audiences = ["example-client"]
+
+[client.tokens]
+access_token_transport = "header"  # "header" | "body" | "query" | "fragment" | "unknown"
+refresh_token_issued = true
+refresh_token_rotation = true
+access_token_lifetime_seconds = 600
+refresh_token_lifetime_seconds = 2592000   # 0 means no absolute expiry
+browser_storage = "server"         # "none" | "memory" | "localstorage" | "sessionstorage" | "cookie" | "server"
+
+# One [provider] table, or several [[providers]] tables for a multi-IdP client.
+# More than one provider is what makes a missing iss parameter exploitable, so
+# list them all even if one is rarely used.
+[provider]
+name = "example-idp"
+issuer = "https://idp.example"
+
+# How the provider compares redirect_uri against the registration:
+# "exact"    - simple string comparison, which is what the specification requires
+# "prefix"   - a registered value is treated as a prefix
+# "wildcard" - a pattern is expanded
+# "unknown"  - not established yet; run `oauth-flow-lint plan` to settle it
+redirect_uri_matching = "exact"
+
+enforces_pkce = true               # a request without code_challenge is rejected
+pkce_methods = ["S256"]
+returns_iss_parameter = true       # RFC 9207 iss in the authorisation response
+dynamic_client_registration = "closed"     # "closed" | "protected" | "open"
+supports_request_uri = false
+grants_offline_access_without_request = false
+
+# A provider metadata document, as a path to a local JSON file. Save it first
+# with a tool of your choosing; this linter never performs network requests, so
+# a URL here is an error rather than a fetch.
+# discovery_document = "./idp-discovery.json"
+
+# Optional: URLs captured from a real flow. The configuration above says what
+# someone believes the client does; a capture records what it did. Where the two
+# disagree, the capture wins, and the disagreement is itself a finding.
+# Redact credential values before committing a capture anywhere.
+#
+# [capture]
+# label = "web sign-in"
+# authorization_request = "https://idp.example/authorize?response_type=code&client_id=example-client&redirect_uri=https%3A%2F%2Fapp.example%2Fauth%2Fcallback&scope=openid+profile&state=REDACTED&code_challenge=REDACTED&code_challenge_method=S256&nonce=REDACTED"
+# authorization_response = "https://app.example/auth/callback?code=REDACTED&state=REDACTED&iss=https%3A%2F%2Fidp.example"

@@ -1,0 +1,68 @@
+# A confidential, server-side web client, configured the way the specifications
+# ask for. The linter reports nothing for it, which is the point: a tool that
+# cannot produce an empty report is a tool whose output nobody can read.
+#
+#   oauth-flow-lint lint examples/hardened-web-confidential.toml   -> exit 0
+
+schema = 1
+
+[client]
+client_id = "billing-portal-web"
+client_type = "confidential"
+application_type = "web"
+secret_present = true
+redirect_uris = ["https://portal.example/auth/callback"]
+response_types = ["code"]
+response_mode = "query"
+grant_types = ["authorization_code", "refresh_token"]
+scopes = ["openid", "profile", "email"]
+stated_purpose_scopes = ["openid", "profile", "email"]
+scope_change_reconsent = true
+
+[client.pkce]
+used = true
+method = "S256"
+
+[client.state]
+sent = true
+bound_to_session = true
+single_use = true
+entropy_bits = 256
+source = "csprng"
+
+[client.nonce]
+sent = true
+bound_to_session = true
+
+[client.id_token_validation]
+signature_verified = true
+alg_pinned = true
+accepted_algs = ["RS256"]
+accepts_none_alg = false
+aud_checked = true
+iss_checked = true
+exp_checked = true
+azp_checked = true
+jwks_source = "pinned"
+jwks_host_pinned = true
+expected_audiences = ["billing-portal-web"]
+
+[client.tokens]
+access_token_transport = "header"
+refresh_token_issued = true
+refresh_token_rotation = true
+access_token_lifetime_seconds = 600
+refresh_token_lifetime_seconds = 2592000
+browser_storage = "server"
+
+[provider]
+name = "corp-idp"
+issuer = "https://idp.example"
+redirect_uri_matching = "exact"
+enforces_pkce = true
+pkce_methods = ["S256"]
+returns_iss_parameter = true
+dynamic_client_registration = "closed"
+supports_request_uri = false
+grants_offline_access_without_request = false
+discovery_document = "./hardened-web-confidential.discovery.json"

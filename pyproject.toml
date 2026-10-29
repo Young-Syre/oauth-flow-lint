@@ -44,6 +44,9 @@ Homepage = "https://github.com/Young-Syre/oauth-flow-lint"
 Source = "https://github.com/Young-Syre/oauth-flow-lint"
 Issues = "https://github.com/Young-Syre/oauth-flow-lint/issues"
 
+[project.scripts]
+oauth-flow-lint = "oauth_flow_lint.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

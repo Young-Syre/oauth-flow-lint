@@ -1,0 +1,17 @@
+{
+  "issuer": "https://sso.example",
+  "authorization_endpoint": "https://sso.example/authorize",
+  "token_endpoint": "http://sso-internal.example/token",
+  "userinfo_endpoint": "https://sso.example/userinfo",
+  "jwks_uri": "https://keys.cdn-provider.example/sso/jwks.json",
+  "registration_endpoint": "https://sso.example/register",
+  "scopes_supported": ["openid", "profile", "email", "offline_access"],
+  "response_types_supported": ["code", "token", "id_token", "id_token token", "code token"],
+  "response_modes_supported": ["query", "fragment", "form_post"],
+  "grant_types_supported": ["authorization_code", "implicit", "refresh_token", "password"],
+  "subject_types_supported": ["public"],
+  "id_token_signing_alg_values_supported": ["RS256", "HS256", "none"],
+  "token_endpoint_auth_methods_supported": ["client_secret_post", "none"],
+  "request_uri_parameter_supported": true,
+  "authorization_response_iss_parameter_supported": false
+}
