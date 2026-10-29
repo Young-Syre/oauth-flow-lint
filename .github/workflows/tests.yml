@@ -1,0 +1,247 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    name: unit tests (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Confirm there is nothing to install
+        run: |
+          # The package declares no dependencies. If that ever changes, this
+          # step is the first thing to fail, which is the point.
+          python - <<'PY'
+          import tomllib, pathlib
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          deps = data["project"]["dependencies"]
+          assert deps == [], f"expected no dependencies, found {deps}"
+          print("dependencies: none")
+          PY
+
+      - name: Install the package itself
+        run: python -m pip install --no-deps -e .
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t . -v
+
+  cli:
+    name: cli contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install --no-deps -e .
+
+      # ----------------------------------------------------------------- help
+      - name: --help documents the exit codes
+        run: |
+          oauth-flow-lint --help | tee help.txt
+          grep -q "0  no findings at or above the failure threshold" help.txt
+          grep -q "1  at least one finding at or above the failure threshold" help.txt
+          grep -q "2  the configuration could not be read or understood" help.txt
+          grep -q "performs no network requests" help.txt
+
+      # ------------------------------------------------------- hardened: clean
+      - name: The hardened confidential web client is clean, exit 0
+        run: |
+          oauth-flow-lint lint examples/hardened-web-confidential.toml
+          test "$(oauth-flow-lint lint examples/hardened-web-confidential.toml --format json | python -c 'import json,sys; print(len(json.load(sys.stdin)["findings"]))')" = "0"
+
+      - name: The hardened native client is clean, and its loopback URI is informational only
+        run: |
+          oauth-flow-lint lint examples/hardened-native-pkce.toml
+          oauth-flow-lint lint examples/hardened-native-pkce.toml --all | grep -q "RU006"
+          # RU004 (http on a routable host) must NOT appear for a loopback native
+          # callback, and RU005 (loopback on a browser client) must not either.
+          oauth-flow-lint lint examples/hardened-native-pkce.toml --all --format json \
+            | python -c 'import json,sys; ids={f["id"] for f in json.load(sys.stdin)["findings"]}; assert ids == {"RU006"}, ids'
+
+      # ------------------------------------------------- vulnerable: exit 1 + ESC
+      - name: The implicit-flow SPA produces the escalated combination, exit 1
+        run: |
+          set +e
+          oauth-flow-lint lint examples/vulnerable-spa-implicit.toml > spa.txt
+          code=$?
+          set -e
+          test "$code" = "1" || { echo "expected exit 1, got $code"; exit 1; }
+          grep -q "ESC001" spa.txt
+          grep -q "front-channel-token-to-attacker-controlled-path" spa.txt
+          grep -q "receives the access token" spa.txt
+          # The components must still be reported, and must point at the combination.
+          grep -q "FL001" spa.txt
+          grep -q "RU002" spa.txt
+          grep -q "escalates into: ESC001" spa.txt
+
+      - name: The escalation case reports every expected finding id
+        run: |
+          # The lint exits 1 by design here, which would otherwise end the step.
+          oauth-flow-lint lint examples/vulnerable-spa-implicit.toml --all --format json > spa.json || true
+          python - <<'PY'
+          import json
+          ids = {f["id"] for f in json.load(open("spa.json"))["findings"]}
+          expected = {
+              "RU002", "RU003", "RU008", "RU009", "RU010", "RU014",
+              "FL001", "FL008",
+              "SN002", "SN003", "SN004", "SN005", "SN008",
+              "TK002", "TK004", "TK008", "TK009", "TK010", "TK011", "TK012", "TK013",
+              "SC001", "SC002", "SC003",
+              "PV001", "PV002", "PV003", "PV005", "PV006", "PV007", "PV009",
+              "CP004", "CP005", "CP006", "CP007", "CP008",
+              "ESC001", "ESC005", "ESC006", "ESC007", "ESC008",
+              "ESC010", "ESC011", "ESC012", "ESC014",
+          }
+          assert ids == expected, (
+              f"missing: {sorted(expected - ids)}; unexpected: {sorted(ids - expected)}"
+          )
+          print(f"{len(ids)} distinct findings, exactly as expected")
+          PY
+
+      - name: The multi-IdP client produces the mix-up combination, exit 1
+        run: |
+          set +e
+          oauth-flow-lint lint examples/multi-idp-missing-iss.toml > idp.txt
+          code=$?
+          set -e
+          test "$code" = "1" || { echo "expected exit 1, got $code"; exit 1; }
+          grep -q "ESC004" idp.txt
+          grep -q "idp-mix-up" idp.txt
+          grep -q "SN007" idp.txt
+          grep -q "mix-up condition" idp.txt
+
+      # -------------------------------------------------------- exit code 1 vs 2
+      - name: The failure threshold moves the exit code
+        run: |
+          oauth-flow-lint lint examples/hardened-native-pkce.toml --fail-on medium
+          set +e
+          oauth-flow-lint lint examples/hardened-native-pkce.toml --fail-on info > /dev/null
+          test "$?" = "1" || { echo "expected exit 1 at --fail-on info"; exit 1; }
+          set -e
+
+      - name: A broken configuration exits 2, not 1
+        run: |
+          set +e
+          oauth-flow-lint lint does-not-exist.toml > /dev/null 2> err.txt
+          test "$?" = "2" || { echo "expected exit 2 for a missing file"; exit 1; }
+          printf '[client]\nclient_type = "semi"\n' > bad.toml
+          oauth-flow-lint lint bad.toml > /dev/null 2>> err.txt
+          test "$?" = "2" || { echo "expected exit 2 for an invalid value"; exit 1; }
+          set -e
+          grep -q "cannot read" err.txt
+          grep -q "is not one of" err.txt
+
+      - name: A discovery document given as a URL is refused rather than fetched
+        run: |
+          cat > url.toml <<'TOML'
+          [client]
+          client_id = "c"
+          redirect_uris = ["https://app.example/cb"]
+          [provider]
+          name = "p"
+          issuer = "https://idp.example"
+          redirect_uri_matching = "exact"
+          discovery_document = "https://idp.example/.well-known/openid-configuration"
+          TOML
+          set +e
+          oauth-flow-lint lint url.toml > /dev/null 2> url-err.txt
+          test "$?" = "2" || { echo "expected exit 2"; exit 1; }
+          set -e
+          grep -q "never performs network requests" url-err.txt
+
+      # ------------------------------------------------------------------ init
+      - name: init produces a configuration that lints clean
+        run: |
+          oauth-flow-lint init scaffold.toml
+          oauth-flow-lint lint scaffold.toml --all | tee scaffold-report.txt
+          grep -q "No findings." scaffold-report.txt
+          test "$(oauth-flow-lint lint scaffold.toml --all --format json | python -c 'import json,sys; d=json.load(sys.stdin); print(len(d["findings"]) + len(d["unknown_configuration_keys"]))')" = "0"
+          set +e
+          oauth-flow-lint init scaffold.toml > /dev/null 2>&1
+          test "$?" = "2" || { echo "init should refuse to overwrite"; exit 1; }
+          set -e
+
+      # ------------------------------------------------------------------ plan
+      - name: plan is offline and lists the normalisation probes
+        run: |
+          oauth-flow-lint plan examples/hardened-web-confidential.toml > plan.txt
+          grep -q "contains no networking code" plan.txt
+          for label in appended-path-segment dot-segment-escape double-slash backslash-authority userinfo-authority default-port-written trailing-dot-host sibling-subdomain scheme-downgrade; do
+            grep -q "$label" plan.txt || { echo "plan is missing the $label probe"; exit 1; }
+          done
+          oauth-flow-lint plan examples/hardened-web-confidential.toml --format json \
+            | python -c 'import json,sys; d=json.load(sys.stdin); assert d["probe_count"] == len(d["probes"]) > 30; print(d["probe_count"], "probes")'
+
+      # ----------------------------------------------------------------- rules
+      - name: rules prints the catalogue and the matrix
+        run: |
+          oauth-flow-lint rules --format json > rules.json
+          python - <<'PY'
+          import json
+          data = json.load(open("rules.json"))
+          assert len(data["escalations"]) == 14, len(data["escalations"])
+          assert len(data["rules"]) >= 60, len(data["rules"])
+          for rule in data["rules"]:
+              assert rule["mechanism"], rule["id"]
+              assert rule["remediation"], rule["id"]
+          for esc in data["escalations"]:
+              known = {r["id"] for r in data["rules"]}
+              assert set(esc["left"]) <= known, esc["id"]
+              assert set(esc["right"]) <= known, esc["id"]
+          print(len(data["rules"]), "rules,", len(data["escalations"]), "escalations")
+          PY
+          oauth-flow-lint rules --matrix | grep -q "ESC001"
+
+  hygiene:
+    name: committed-content hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No secret-shaped literal is committed
+        run: |
+          ! grep -rEn 'eyJ[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{30,}|BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[0-9A-Za-z]{36}|AIza[0-9A-Za-z_-]{35}' . --exclude-dir=.git
+
+      - name: No absolute local path is committed
+        run: |
+          ! grep -rEn '/home/[a-z]|/Users/[a-z]' . --exclude-dir=.git
+
+      - name: Every example host is a reserved or placeholder name
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          permitted_tlds = {"example", "invalid", "test", "localhost"}
+          permitted_hosts = {"127.0.0.1", "localhost", "::1", "oauth-flow-lint-placeholder.pages.dev"}
+          bad = []
+          for path in sorted(pathlib.Path("examples").iterdir()):
+              for host in re.findall(r"https?://([A-Za-z0-9*.\-]+)", path.read_text()):
+                  bare = host.rstrip(".").lower()
+                  if bare in permitted_hosts:
+                      continue
+                  if bare.rsplit(".", 1)[-1] not in permitted_tlds:
+                      bad.append(f"{path.name}: {host}")
+          if bad:
+              sys.exit("non-reserved hosts in fixtures: " + ", ".join(bad))
+          print("every fixture host is reserved or an explicit placeholder")
+          PY
