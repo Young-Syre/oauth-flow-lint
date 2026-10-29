@@ -23,8 +23,12 @@ STATE_SOURCES = ("csprng", "timestamp", "counter", "static", "unknown")
 JWKS_SOURCES = ("pinned", "discovery", "token_header", "unknown")
 PKCE_METHODS = ("S256", "plain")
 
-#: Response types that return a credential through the front channel.
-FRONT_CHANNEL_TOKEN_TYPES = ("token", "id_token")
+#: Response-type components that return a usable credential through the front
+#: channel, as opposed to a code that still has to be exchanged. Declared here
+#: and -- until the implicit predicates below were corrected -- consulted
+#: nowhere: the list was right and the code that needed it tested for the bare
+#: word `token` instead.
+FRONT_CHANNEL_TOKEN_TYPES = frozenset({"token", "id_token"})
 
 
 @dataclass
@@ -113,8 +117,34 @@ class Client:
         return self.application_type in ("web", "spa")
 
     @property
+    def implicit_response_types(self) -> list[str]:
+        """Response types that return a credential in the front channel and no code.
+
+        `id_token` is one of them. OIDC Core makes `response_type=id_token` an
+        implicit flow, and a relying party that accepts an ID token as proof of
+        authentication accepts one delivered to a redirect an attacker
+        controls -- the same account-takeover shape as a leaked access token.
+        Testing for the bare word `token` read `id_token` as neither implicit
+        nor hybrid, so it fell through every front-channel rule.
+        """
+        return [
+            rt for rt in self.response_types if set(rt.split()) & FRONT_CHANNEL_TOKEN_TYPES and "code" not in rt.split()
+        ]
+
+    @property
     def uses_implicit(self) -> bool:
-        return any("token" in rt.split() for rt in self.response_types)
+        return bool(self.implicit_response_types)
+
+    @property
+    def returns_front_channel_credential(self) -> bool:
+        """True when any response type puts a credential in the callback URL.
+
+        Implicit *or* hybrid. This is the question a rule about `response_mode`
+        has to ask: the fragment is the correct and default delivery channel
+        whenever a credential comes back through the browser, and only wrong
+        when the callback carries nothing but a code.
+        """
+        return bool(self.implicit_response_types or self.hybrid_response_types)
 
     @property
     def uses_code(self) -> bool:
@@ -131,7 +161,7 @@ class Client:
         out = []
         for rt in self.response_types:
             parts = set(rt.split())
-            if "code" in parts and parts & {"token", "id_token"}:
+            if "code" in parts and parts & FRONT_CHANNEL_TOKEN_TYPES:
                 out.append(rt)
         return out
 

@@ -656,3 +656,32 @@ class HardenedConfigurationsEscalateNothing(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class IdTokenFrontChannelEscalates(unittest.TestCase):
+    """FL012 is a front-channel credential, so the escalation chain must see it.
+
+    FRONT_CHANNEL_CREDENTIAL listed FL001, FL002 and CP008. An id_token-only
+    client fired none of them, so ESC001 never fired for it however loose the
+    provider's redirect matching was -- while the identical configuration with
+    an access token fired it.
+    """
+
+    def test_an_id_token_flow_with_loose_redirect_matching_escalates(self):
+        cfg = config(
+            client=hardened_client(response_types=["id_token"]),
+            providers=[hardened_provider(redirect_uri_matching="prefix")],
+        )
+        f = fired(cfg)
+        self.assertIn("FL012", f)
+        self.assertIn("ESC001", f, "a credential reaching an attacker-controlled path")
+
+    def test_it_matches_what_an_access_token_flow_does(self):
+        def escalations(response_types):
+            cfg = config(
+                client=hardened_client(response_types=response_types),
+                providers=[hardened_provider(redirect_uri_matching="prefix")],
+            )
+            return {r for r in fired(cfg) if r.startswith("ESC")}
+
+        self.assertEqual(escalations(["id_token"]), escalations(["token"]))

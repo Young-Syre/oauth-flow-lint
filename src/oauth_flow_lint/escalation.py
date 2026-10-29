@@ -39,7 +39,12 @@ LOOSE_REDIRECT_REACH = ("RU001", "RU002", "RU003", "RU008", "RU009", "RU016")
 ONWARD_FORWARDING = ("RU010", "RU011")
 
 #: Rules that mean "a credential is delivered through the front channel".
-FRONT_CHANNEL_CREDENTIAL = ("FL001", "FL002", "CP008")
+# FL012 belongs here for the same reason FL001 does: a credential arriving at
+# a redirect an attacker can reach is the whole mechanism, and an ID token
+# delivered that way is an account takeover against any relying party that
+# accepts one as proof of authentication. Its absence meant ESC001 and ESC007
+# never fired for an id_token-only client, however loose its redirect matching.
+FRONT_CHANNEL_CREDENTIAL = ("FL001", "FL002", "FL012", "CP008")
 
 
 @dataclass(frozen=True)

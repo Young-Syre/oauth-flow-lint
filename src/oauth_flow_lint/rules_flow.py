@@ -18,7 +18,10 @@ def check(config: Configuration) -> list[Finding]:
     out: list[Finding] = []
     locus = f"client {client.client_id}"
 
-    implicit_types = [rt for rt in client.response_types if "token" in rt.split()]
+    # Deliberately scoped to an access token in the front channel; an ID token
+    # alone is FL012, which carries its own severity because a replayable
+    # identity assertion and a bearer key to an API are not the same risk.
+    implicit_types = [rt for rt in client.implicit_response_types if "token" in rt.split()]
     if implicit_types:
         out.append(
             finding(
@@ -44,6 +47,22 @@ def check(config: Configuration) -> list[Finding]:
                     evidence={"response_types": implicit_types},
                 )
             )
+
+    id_token_only = [rt for rt in client.implicit_response_types if "token" not in rt.split()]
+    if id_token_only:
+        out.append(
+            finding(
+                "FL012",
+                locus=locus,
+                detail=(
+                    f"response_types is {', '.join(repr(t) for t in id_token_only)}, so an ID token is returned in the URL "
+                    "fragment of the callback and no code is exchanged. An ID token is a bearer assertion of identity: a "
+                    "relying party that accepts one as proof of authentication accepts whatever reaches its callback, so the "
+                    "redirect URI and the nonce are the whole of the defence."
+                ),
+                evidence={"response_types": id_token_only},
+            )
+        )
 
     hybrid = client.hybrid_response_types
     if hybrid:
@@ -187,7 +206,12 @@ def check(config: Configuration) -> list[Finding]:
         )
 
     # -- response mode -----------------------------------------------------
-    if client.response_mode == "fragment" and not client.uses_implicit:
+    # The fragment is the correct and default channel whenever a credential
+    # comes back through the browser -- implicit or hybrid. It is only wrong
+    # when the callback carries nothing but a code. Asking `uses_implicit`
+    # meant an id_token-only client, for which the fragment is exactly right,
+    # was told to stop using it.
+    if client.response_mode == "fragment" and not client.returns_front_channel_credential:
         out.append(
             finding(
                 "FL009",

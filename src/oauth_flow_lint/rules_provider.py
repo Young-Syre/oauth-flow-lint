@@ -102,7 +102,9 @@ def _check_discovery(config: Configuration, provider: Provider) -> list[Finding]
             finding(
                 "PV001",
                 locus=locus,
-                detail="The metadata publishes endpoint(s) over http: " + "; ".join(insecure) + ". Anyone on the network path can answer them, and they are where codes are exchanged and keys are published.",
+                detail="The metadata publishes endpoint(s) over http: "
+                + "; ".join(insecure)
+                + ". Anyone on the network path can answer them, and they are where codes are exchanged and keys are published.",
                 evidence={"endpoints": insecure},
             )
         )
@@ -152,9 +154,7 @@ def _check_discovery(config: Configuration, provider: Provider) -> list[Finding]
     # -- client authentication methods ------------------------------------
     methods = doc.get("token_endpoint_auth_methods_supported")
     if isinstance(methods, list) and "none" in methods:
-        confidential = [
-            config.client.client_id
-        ] if config.client.client_type == "confidential" else []
+        confidential = [config.client.client_id] if config.client.client_type == "confidential" else []
         out.append(
             finding(
                 "PV003",
@@ -205,7 +205,7 @@ def _check_discovery(config: Configuration, provider: Provider) -> list[Finding]
 
     # -- response modes and types -----------------------------------------
     modes = doc.get("response_modes_supported")
-    if isinstance(modes, list) and "fragment" in modes and not config.client.uses_implicit:
+    if isinstance(modes, list) and "fragment" in modes and not config.client.returns_front_channel_credential:
         out.append(
             finding(
                 "PV004",

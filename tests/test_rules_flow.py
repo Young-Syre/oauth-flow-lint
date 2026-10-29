@@ -154,3 +154,57 @@ class ResponseMode(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class IdTokenOnlyImplicit(unittest.TestCase):
+    """`response_type=id_token` is an implicit flow under OIDC Core 3.2.
+
+    `uses_implicit` tested for the bare word `token`, and `"token"` is not in
+    `["id_token"]`, so this configuration was read as neither implicit nor hybrid
+    and fell through every front-channel rule: FL009 fired saying the fragment
+    was unnecessary -- on the flow whose default and correct response mode *is*
+    the fragment -- while no rule reported the front-channel credential at all,
+    so the escalation chain never saw one.
+    """
+
+    def test_id_token_alone_is_implicit(self):
+        self.assertTrue(client(response_types=["id_token"]).client.uses_implicit)
+
+    def test_hybrid_is_not_implicit(self):
+        for rt in ("code id_token", "code token", "code id_token token"):
+            with self.subTest(response_type=rt):
+                cfg = client(response_types=[rt])
+                self.assertFalse(cfg.client.uses_implicit, rt)
+                self.assertTrue(cfg.client.hybrid_response_types, rt)
+                self.assertTrue(cfg.client.returns_front_channel_credential, rt)
+
+    def test_code_alone_returns_no_front_channel_credential(self):
+        self.assertFalse(client(response_types=["code"]).client.returns_front_channel_credential)
+
+    def test_id_token_alone_fires_fl012_and_not_fl001(self):
+        # FL001 stays scoped to an access token on purpose: a replayable identity
+        # assertion and a bearer key to an API are not the same risk, which is
+        # why FL012 carries its own severity.
+        f = fired(client(response_types=["id_token"]))
+        self.assertIn("FL012", f)
+        self.assertNotIn("FL001", f)
+
+    def test_id_token_with_an_access_token_fires_fl001_and_not_fl012(self):
+        cfg = client(response_types=["id_token token"], nonce=hardened_client().nonce)
+        f = fired(cfg)
+        self.assertIn("FL001", f)
+        self.assertNotIn("FL012", f)
+
+    def test_hybrid_fires_fl002_and_not_fl012(self):
+        f = fired(client(response_types=["code id_token"]))
+        self.assertIn("FL002", f)
+        self.assertNotIn("FL012", f)
+
+    def test_fragment_is_not_reported_as_unnecessary_for_an_id_token_flow(self):
+        self.assertNotIn("FL009", fired(client(response_types=["id_token"], response_mode="fragment")))
+
+    def test_fragment_is_still_reported_as_unnecessary_for_a_code_flow(self):
+        self.assertIn("FL009", fired(client(response_types=["code"], response_mode="fragment")))
+
+    def test_fragment_is_not_reported_as_unnecessary_for_a_hybrid_flow(self):
+        self.assertNotIn("FL009", fired(client(response_types=["code id_token"], response_mode="fragment")))

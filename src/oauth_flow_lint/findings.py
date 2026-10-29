@@ -326,6 +326,15 @@ _RULE_LIST: list[Rule] = [
         "Use response_mode=query for the code flow, or form_post where the code must not appear in a URL.",
     ),
     _r(
+        "FL012",
+        "front-channel-id-token",
+        "flow",
+        S.MEDIUM,
+        "An ID token returned in the callback fragment with no code exchange is a bearer assertion of identity, so a relying party that treats one as proof of authentication accepts whatever reaches its callback - the redirect URI and the nonce are the whole of the defence. Lower than FL001 because an ID token is not a key to an API, and not absent, because it is still an account takeover where the redirect is loose.",
+        "OIDC Core 3.2 (implicit flow), 3.1.3.7 (ID token validation)",
+        "Use the authorization code flow with PKCE. If the implicit flow is unavoidable, pin the redirect URI to an exact value and verify the nonce on every response.",
+    ),
+    _r(
         "FL010",
         "pkce-method-unsupported-by-provider",
         "flow",
