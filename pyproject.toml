@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oauth-flow-lint"
+version = "0.1.0"
+description = "Offline linter for OAuth 2.0 and OpenID Connect client configurations, with an explicit model of how weaknesses combine."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "David Nichols" }]
+keywords = [
+    "oauth2",
+    "oidc",
+    "openid-connect",
+    "pkce",
+    "redirect-uri",
+    "security",
+    "linter",
+    "static-analysis",
+    "appsec",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+
+# No dependencies, by design. `tomllib` has been in the standard library since
+# Python 3.11, which is why that is the floor.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Young-Syre/oauth-flow-lint"
+Source = "https://github.com/Young-Syre/oauth-flow-lint"
+Issues = "https://github.com/Young-Syre/oauth-flow-lint/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+oauth_flow_lint = ["py.typed", "scaffold.toml"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    # Each rule's prose lives next to the condition that produces it, which is
+    # easier to review than prose held in a table somewhere else - and that
+    # prose is frequently a long line.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# RU017 and the IDN hazard are about homographs, so the tests for them contain
+# a Cyrillic character that is visually identical to a Latin one. That is the
+# subject of the test, not a mistake in it.
+"tests/test_urls.py" = ["RUF001"]
+"tests/test_rules_redirect.py" = ["RUF001"]
+# The baseline builders in the test helpers are intentionally repetitive: a
+# test that has to describe a whole configuration to make its point is a test
+# whose point is not clear.
+"tests/helpers.py" = ["C408"]
